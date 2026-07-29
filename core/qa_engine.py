@@ -155,7 +155,7 @@ def _topic_confound(q, kpi_summary, use_case_scores, by_site, kb) -> str:
 
 
 def _topic_regulatory(q, kpi_summary, use_case_scores, by_site, kb) -> str:
-    return kb.get("imda_regulatory_gap", {}).get("summary", "No entry found.")
+    return kb.get("imda_fibre_qos_benchmark", {}).get("summary", "No entry found.")
 
 
 def _topic_vendor(q, kpi_summary, use_case_scores, by_site, kb) -> str:

@@ -6,18 +6,26 @@ director and management audience.
 
 Tab layout (6 tabs):
     1. Problem Statement  -- headline verdict, readiness, confidence, top
-                              implications up front.
+                              implications up front; download button for a
+                              self-contained, printable HTML executive
+                              summary (core/report.py).
     2. Methodology         -- data sources, test design, raw data table,
                               CSV/template downloads, calculation methods,
-                              benchmark reference table (expander).
+                              a dish-to-dashboard data-pipeline diagram
+                              (core/diagrams.py, flags where the throughput
+                              unit bug was caught), benchmark reference
+                              table (expander, source-linked).
     3. Key Results          -- KPI tiles, per-site comparison chart,
-                              obstruction-vs-drop scatter, use-case
-                              decision table for dense_urban (the only
-                              use case with real data).
+                              per-session time-series (obstruction/ping-drop
+                              vs elapsed minutes, to show whether drops
+                              cluster or scatter), obstruction-vs-drop
+                              scatter, use-case decision table for
+                              dense_urban (the only use case with real data).
     4. Risks & Limitations  -- site-type confound (headline risk), partial
                               sessions, single-rig caveat, no live speedtest.
     5. Recommendations      -- use-case scoring matrix + rationale
-                              expanders, concrete next-test recommendation.
+                              expanders, phased next-steps roadmap table
+                              (owner/timing left as placeholders).
     6. AI Q&A                -- rule-based (no API key, no network call) Q&A
                               over the KPI summary + curated knowledge_base.json;
                               unmatched questions are logged for the technical
@@ -39,7 +47,7 @@ import streamlit as st
 
 from config.thresholds import OBSTRUCTION_BANDS, THRESHOLDS
 from config.use_cases import USE_CASES, VERDICT_LABELS
-from core import qa_engine
+from core import diagrams, qa_engine, report
 from core.ingest import IngestError, load_and_validate
 from core.metrics import kpi_by_site, kpi_summary
 from core.scoring import score_all_use_cases
@@ -149,10 +157,20 @@ was **{summary.get('avg_ping_drop_pct', 'n/a')}%** — {dense_urban['reason']}
 2. The one open-sky test (Punggol Park, ~2.35% obstruction, partial run) looks
    substantially better, but is confounded with site type — see
    **Risks & Limitations**.
-3. No IMDA-published regulatory QoS threshold has been applied to this data;
-   the verdict above is against engineering acceptance criteria authored for
-   this test program, not an official standard.
+3. No IMDA standard specific to satellite broadband exists yet. Against
+   IMDA's actual fixed-fibre QoS bar (99.9% availability) as a directional
+   reference only, measured probe success (88.2%) falls far short — see
+   Methodology for the full caveat on why that's not a compliance finding.
         """
+    )
+
+    st.divider()
+    st.subheader("Export")
+    st.download_button(
+        "Download 1-page executive summary (HTML, printable to PDF)",
+        report.build_executive_summary_html(df, summary, scores, label),
+        file_name="starlink_executive_summary.html",
+        mime="text/html",
     )
 
 
@@ -177,6 +195,15 @@ re-derives.
     )
     st.dataframe(session_table, width='stretch')
 
+    st.subheader("Data pipeline (dish to dashboard)")
+    st.caption(
+        "Shown because this pipeline has already produced one silent data error "
+        "(the throughput unit bug below) that only manual verification against "
+        "the upstream exporter source caught — worth knowing where the numbers "
+        "actually come from before trusting them."
+    )
+    st.plotly_chart(diagrams.build_pipeline_diagram(), width='stretch', config={"displayModeBar": False})
+
     st.markdown(
         """
 **Known data-quality notes:**
@@ -184,13 +211,22 @@ re-derives.
   utilization, not a speedtest result — never mapped into this dashboard's
   `download_mbps`/`upload_mbps` KPI fields. A corrected (unit-bug-fixed)
   version is retained as diagnostic-only `link_utilization_mbps_*` columns.
+  (This is the bug flagged in the pipeline diagram above: the PowerShell
+  collector trusted a mislabeled Prometheus metric name and applied an
+  erroneous extra ×8 conversion — caught by checking the upstream exporter's
+  source code, not just its documentation.)
 - No live speedtest has been run at any site to date.
         """
     )
 
-    with st.expander("Benchmark reference table (vendor/standards figures — not measured)"):
+    with st.expander("Benchmark reference table (vendor/standards/regulatory figures — not measured)"):
         for key, t in THRESHOLDS.items():
-            st.markdown(f"- **{key}** ({t['source_type']}): {t.get('value', t.get('value_range'))} — _{t['source']}_")
+            value = t.get("value", t.get("value_range"))
+            comparator = t.get("comparator", "")
+            line = f"- **{key}** ({t['source_type']}): {comparator}{value} — _{t['source']}_"
+            if t.get("source_url"):
+                line += f" [[source]]({t['source_url']})"
+            st.markdown(line)
 
     with st.expander("Raw data + downloads"):
         st.dataframe(df, width='stretch', height=300)
@@ -218,6 +254,29 @@ def render_key_results(df: pd.DataFrame, summary: dict, by_site: pd.DataFrame, s
     fig.add_bar(name="Avg ping drop %", x=by_site["site_name"], y=by_site["avg_ping_drop_pct"])
     fig.update_layout(barmode="group", yaxis_title="%")
     st.plotly_chart(fig, width='stretch')
+
+    st.subheader("Obstruction and ping drop over time, per session")
+    st.caption(
+        "Aggregates hide *when* problems happen. This shows whether drops cluster "
+        "(e.g. periodic satellite handover) or are scattered randomly across each "
+        "test window — a different engineering story either way."
+    )
+    ts_df = df.copy()
+    ts_df["obstruction_pct"] = pd.to_numeric(ts_df["obstruction_pct"], errors="coerce")
+    ts_df["pop_drop_pct"] = pd.to_numeric(ts_df["pop_drop_pct"], errors="coerce")
+    ts_df["elapsed_min"] = ts_df.groupby("location_name")["timestamp"].transform(
+        lambda s: (s - s.min()).dt.total_seconds() / 60
+    )
+    fig_ts = go.Figure()
+    for name, group in ts_df.groupby("location_name"):
+        group = group.sort_values("elapsed_min")
+        fig_ts.add_scatter(x=group["elapsed_min"], y=group["obstruction_pct"], mode="lines",
+                            name=f"{name} — obstruction %", legendgroup=name)
+        fig_ts.add_scatter(x=group["elapsed_min"], y=group["pop_drop_pct"], mode="lines",
+                            name=f"{name} — ping drop %", legendgroup=name, line=dict(dash="dot"))
+    fig_ts.update_layout(xaxis_title="Elapsed minutes since session start", yaxis_title="%",
+                          legend=dict(orientation="h", yanchor="bottom", y=1.02))
+    st.plotly_chart(fig_ts, width='stretch')
 
     st.subheader("Obstruction vs. ping drop (sample-level)")
     scatter_df = df.copy()
@@ -263,9 +322,12 @@ siting technique alone fixes obstruction at a building.
   telemetry, ~16:17-16:24). Neither ran the recommended full 4-hour window.
 - **No live speedtest:** throughput figures are idle link-utilization
   telemetry, not a measured download/upload capacity.
-- **No IMDA regulatory QoS threshold applied:** the verdicts in this
+- **No satellite-specific IMDA standard exists:** the verdicts in this
   dashboard are scored against engineering acceptance criteria authored for
-  this test program, not an official IMDA standard.
+  this test program. IMDA's actual fixed-fibre QoS framework is shown in
+  Methodology as a directional reference only — Starlink Mini isn't a
+  regulated BASP under it, so any comparison against it is not a compliance
+  finding.
         """
     )
     st.subheader("Per-site sample counts (for weighing confidence)")
@@ -292,19 +354,46 @@ def render_recommendations(scores: list[dict]) -> None:
             if r["kpis"]:
                 st.json(r["kpis"])
 
-    st.subheader("Recommended next step")
-    st.info(
-        """
-**Before any pilot or policy recommendation:** run 2-3 placements *within
-the same building* (not new sites) — ideally at the MBC office, where a
-completed 4-hour baseline already exists for comparison. If obstruction and
-ping drop fall to near-Punggol-Park levels purely from repositioning within
-one building, that isolates siting technique as the causal factor and
-resolves the site-type confound. Also complete one full uninterrupted
-4-hour run at the best placement found so far, since both non-HDB sessions
-to date are partial.
-        """
-    )
+    st.subheader("Recommended next steps (roadmap)")
+    st.caption("Owner and timing are placeholders — fill in before circulating as a committed plan.")
+    roadmap = pd.DataFrame([
+        {
+            "Phase": "1. Resolve site-type confound",
+            "Action": "Run 2-3 placements within the same building (MBC office), full 4-hour sessions each",
+            "Owner": "TBD — assign",
+            "Target timing": "TBD",
+            "Exit criteria": "Obstruction/ping-drop converge toward Punggol-Park levels from repositioning alone, or they don't",
+        },
+        {
+            "Phase": "2. Close the throughput gap",
+            "Action": "Run an actual speedtest at the best placement found in Phase 1",
+            "Owner": "TBD — assign",
+            "Target timing": "TBD, after Phase 1",
+            "Exit criteria": "Real download/upload numbers exist to compare against vendor spec",
+        },
+        {
+            "Phase": "3. One full clean run",
+            "Action": "Uninterrupted 4-hour test at the best placement, no aborted/outage sessions",
+            "Owner": "TBD — assign",
+            "Target timing": "TBD, same window as Phase 1-2",
+            "Exit criteria": "No outage window; confidence on that placement upgrades to high",
+        },
+        {
+            "Phase": "4. Expand use-case coverage",
+            "Action": "Test maritime/port, remote worksite, critical-infra placements (currently insufficient_data)",
+            "Owner": "TBD — assign",
+            "Target timing": "TBD, after Phase 1 confound is resolved",
+            "Exit criteria": "At least one real session per remaining use-case location_type",
+        },
+        {
+            "Phase": "5. Pilot/policy decision",
+            "Action": "Bring findings to technical director + management for a go/no-go scope decision",
+            "Owner": "TBD — assign",
+            "Target timing": "TBD, after Phases 1-3",
+            "Exit criteria": "Documented decision, not just another test",
+        },
+    ])
+    st.dataframe(roadmap, width='stretch', hide_index=True)
 
 
 def render_qa(summary: dict, scores: list[dict], by_site: pd.DataFrame) -> None:

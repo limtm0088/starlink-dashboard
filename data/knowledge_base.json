@@ -11,9 +11,10 @@
     "summary": "ITU-T Y.1541 Class 0 (real-time, jitter-sensitive traffic) targets delay <=100ms, jitter <=50ms, and packet loss <=0.001. This rig's measured ping-drop rates (23-35% at obstructed sites) are far outside this class.",
     "source_type": "standards_reference"
   },
-  "imda_regulatory_gap": {
-    "summary": "No specific IMDA-published numeric QoS threshold for LEO satellite broadband obstruction tolerance has been applied in this analysis. This is a known evidence gap, not an omission -- if the technical director has an internal benchmark, it should be added to config/thresholds.py.",
-    "source_type": "regulatory_reference"
+  "imda_fibre_qos_benchmark": {
+    "summary": "IMDA has no published QoS standard specific to satellite/wireless broadband. Its actual 'Quality of Service Framework for Retail Fixed-Line Broadband (Fibre) Internet Access Services' requires network availability >=99.9%, local latency <=30ms and international latency <=300ms (both round-trip, 95th percentile during the 4 busiest hours/day) -- but this legally applies only to fixed-line fibre BASPs with >=10% market share, not to Starlink Mini. Used here purely as a directional reference: this rig's measured p95 latency (~34ms) is in the same range as the fibre local-latency bar, but measured probe success (88.2% overall, as low as ~63% during the worst obstructed sessions) falls far short of the 99.9% fibre availability bar -- not a compliance finding, since Starlink isn't regulated under this framework and the measurement methodology differs (continuous 3-second polling vs monthly 5-min test calls).",
+    "source_type": "regulatory_reference",
+    "source_url": "https://www.imda.gov.sg/-/media/imda/files/regulation-licensing-and-consultations/licensing/licenses/compliance-to-ida-standards/page-b---qos-framework-for-fibre-broadband-services.pdf"
   },
   "site_type_confound": {
     "summary": "The 3 real test sites (HDB home, MBC office, Punggol Park) differ in both obstruction level and site type (building vs open park). A single placement per site cannot separate 'better siting technique reduces obstruction' from 'an open park simply has less obstruction than a building'. The next recommended data collection step is 2-3 placements within the same building.",
