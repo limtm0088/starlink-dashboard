@@ -6,7 +6,11 @@ director and management audience.
 
 Tab layout (6 tabs):
     1. Problem Statement  -- headline verdict, readiness, confidence, top
-                              implications up front; download button for a
+                              implications up front; a "how Starlink Mini
+                              works" primer + glossary (collapsed expanders,
+                              sourced from Starlink's own spec sheet) so a
+                              non-technical reader knows why obstruction is
+                              the key metric; download button for a
                               self-contained, printable HTML executive
                               summary (core/report.py).
     2. Methodology         -- data sources, test design, raw data table,
@@ -140,6 +144,66 @@ def render_problem_statement(df: pd.DataFrame, summary: dict, scores: list[dict]
     col1.metric("Headline verdict (dense urban)", VERDICT_LABELS[verdict])
     col2.metric("Confidence", confidence.title())
     col3.metric("Obstruction band", obstruction_band_label(summary.get("avg_obstruction_pct")))
+
+    with st.expander("New to Starlink Mini? How it works, and why \"obstruction\" is the metric that decides everything"):
+        st.markdown(
+            """
+**The hardware** (specs below are Starlink's own published figures, not
+this dashboard's measurements): the Mini is a flat phased-array antenna,
+298.5 x 259 x 38.5mm, 1.1kg (1.53kg with kickstand and its 15m cable),
+drawing 25-40W on average — about the same as a laptop charger. It ships
+with an integrated WiFi 5 router (covers up to ~112m² / 1,200 sq ft, up to
+128 devices) and a kickstand mount, no separate router or professional
+install needed. That portability is exactly why it's a candidate for
+emergency-backup and remote-worksite use cases in the first place.
+
+**Why obstruction, specifically, is what this whole test program measures:**
+Starlink Mini doesn't point at one fixed spot in the sky like a traditional
+satellite dish. It connects to a constellation of Low Earth Orbit (LEO)
+satellites at roughly 550km altitude — each one is only visible to a given
+ground terminal for about 10 minutes before the connection has to hand off
+to the next satellite moving into view. The antenna electronically steers
+across a **110° field of view** (Starlink's published spec) to keep
+tracking whichever satellite it's currently locked onto. A tree branch,
+building overhang, or nearby wall that blocks even part of that 110° cone
+can interrupt the link — which is exactly what this rig's `obstruction_pct`
+metric is measuring, sample by sample. This is fundamentally different from
+cellular (which just needs a nearby tower, no sky view required) or a fixed
+GEO satellite dish (which points at one unmoving spot forever) — it's why
+this test program's headline number is obstruction, not signal strength or
+distance from anything.
+            """
+        )
+        st.plotly_chart(diagrams.build_field_of_view_diagram(), width='stretch', config={"displayModeBar": False})
+        st.caption(
+            "Source: Starlink's official Mini specification sheet "
+            "([starlink.com/public-files/specification_sheet_mini.pdf]"
+            "(https://starlink.com/public-files/specification_sheet_mini.pdf)); "
+            "LEO altitude/pass-duration figures are general published characteristics "
+            "of the Starlink constellation, not vendor-specific claims."
+        )
+
+    with st.expander("Glossary of terms used in this dashboard"):
+        st.markdown(
+            """
+- **Obstruction %** — how much of the antenna's 110° field of view is
+  currently blocked, as reported by the dish itself.
+- **POP latency** — round-trip time from the dish to Starlink's Point of
+  Presence (their network edge), in milliseconds. Low even when the link is
+  unreliable, since it only measures successful round-trips.
+- **Ping drop %** — the share of ping attempts to Starlink's POP that got no
+  response at all. The single best indicator of link *stability*, as
+  distinct from latency.
+- **Probe success %** — combined success rate across independent DNS, HTTP,
+  TCP-443, and small-download checks to external destinations — a proxy for
+  "would a real request have worked," not just "is the dish connected."
+- **Clean sample %** — the share of samples where every probe succeeded
+  *and* ping drop was zero — the strictest read of reliability.
+- **p95 latency** — the latency value 95% of samples were faster than (i.e.
+  worst-case-but-one figure, not the average) — the same percentile
+  convention IMDA's own QoS standard uses.
+            """
+        )
 
     st.markdown(
         f"""
