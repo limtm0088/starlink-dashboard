@@ -1,0 +1,22 @@
+{
+  "starlink_vendor_spec": {
+    "summary": "Starlink publishes typical residential/roam download in the 25-220 Mbps range, upload 5-20 Mbps, latency 25-60ms under clear sky. These are vendor-published figures, not independently verified by this test program.",
+    "source_type": "vendor_spec"
+  },
+  "3gpp_ntn_latency": {
+    "summary": "3GPP TR 38.821 defines a LEO non-terrestrial-network one-way latency budget of roughly 30-35ms, consistent with the low steady-state latency this rig measures when the link is up.",
+    "source_type": "standards_reference"
+  },
+  "itu_t_y1541_class0": {
+    "summary": "ITU-T Y.1541 Class 0 (real-time, jitter-sensitive traffic) targets delay <=100ms, jitter <=50ms, and packet loss <=0.001. This rig's measured ping-drop rates (23-35% at obstructed sites) are far outside this class.",
+    "source_type": "standards_reference"
+  },
+  "imda_regulatory_gap": {
+    "summary": "No specific IMDA-published numeric QoS threshold for LEO satellite broadband obstruction tolerance has been applied in this analysis. This is a known evidence gap, not an omission -- if the technical director has an internal benchmark, it should be added to config/thresholds.py.",
+    "source_type": "regulatory_reference"
+  },
+  "site_type_confound": {
+    "summary": "The 3 real test sites (HDB home, MBC office, Punggol Park) differ in both obstruction level and site type (building vs open park). A single placement per site cannot separate 'better siting technique reduces obstruction' from 'an open park simply has less obstruction than a building'. The next recommended data collection step is 2-3 placements within the same building.",
+    "source_type": "measured"
+  }
+}
